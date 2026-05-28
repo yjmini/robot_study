@@ -1,0 +1,100 @@
+<?xml version="1.0"?>
+<robot name="multi_joint_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <!-- ============ 파라미터 정의 ============ -->
+    <xacro:property name="link_radius" value="0.1"/>
+    <xacro:property name="link_length" value="1.0"/>
+
+    <!-- ============ 색상(Material) 정의 ============ -->
+    <material name="gray">    <color rgba="0.5 0.5 0.5 1.0"/> </material>
+    <material name="red">     <color rgba="1.0 0.2 0.2 1.0"/> </material>
+    <material name="green">   <color rgba="0.2 0.8 0.2 1.0"/> </material>
+    <material name="blue">    <color rgba="0.2 0.4 1.0 1.0"/> </material>
+    <material name="orange">  <color rgba="1.0 0.6 0.0 1.0"/> </material>
+
+    <!-- ============ ① base_link (받침대) ============ -->
+    <link name="base_link">
+        <visual>
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <box size="1 1 0.1"/>   <!-- 얇은 받침대 형태 -->
+            </geometry>
+            <material name="gray"/>
+        </visual>
+    </link>
+
+    <!-- ============ ② revolute joint: 제한된 회전 ============ -->
+    <joint name="joint1_revolute" type="revolute">
+        <parent link="base_link"/>
+        <child link="link1"/>
+        <origin xyz="0 0 0.05" rpy="0 0 0"/>
+        <axis xyz="0 0 1"/>     <!-- z축 회전 (요잉) -->
+        <limit lower="-1.57" upper="1.57" effort="1000" velocity="1.0"/>
+    </joint>
+
+    <link name="link1">
+        <visual>
+            <origin xyz="0 0 ${link_length/2}" rpy="0 0 0"/>
+            <geometry>
+                <cylinder radius="${link_radius}" length="${link_length}"/>
+            </geometry>
+            <material name="red"/>
+        </visual>
+    </link>
+
+    <!-- ============ ③ continuous joint: 무한 회전 (limit 없음) ============ -->
+    <joint name="joint2_continuous" type="continuous">
+        <parent link="link1"/>
+        <child link="link2"/>
+        <origin xyz="0 0 ${link_length}" rpy="0 0 0"/>
+        <axis xyz="1 0 0"/>     <!-- x축 회전 (피칭) -->
+        <!-- continuous는 limit 태그 없음 -->
+    </joint>
+
+    <link name="link2">
+        <visual>
+            <origin xyz="${link_length/2} 0 0" rpy="0 1.5708 0"/>
+            <geometry>
+                <cylinder radius="${link_radius*0.8}" length="${link_length}"/>
+            </geometry>
+            <material name="green"/>
+        </visual>
+    </link>
+
+    <!-- ============ ④ prismatic joint: 직선 운동 ============ -->
+    <joint name="joint3_prismatic" type="prismatic">
+        <parent link="link2"/>
+        <child link="link3"/>
+        <origin xyz="${link_length} 0 0" rpy="0 0 0"/>
+        <axis xyz="1 0 0"/>     <!-- x축 방향으로 슬라이드 -->
+        <limit lower="0.0" upper="0.5" effort="100" velocity="0.1"/>
+    </joint>
+
+    <link name="link3">
+        <visual>
+            <origin xyz="0.15 0 0" rpy="0 1.5708 0"/>
+            <geometry>
+                <cylinder radius="${link_radius*0.6}" length="0.3"/>
+            </geometry>
+            <material name="blue"/>
+        </visual>
+    </link>
+
+    <!-- ============ ⑤ fixed joint: 말단 도구(고정) ============ -->
+    <joint name="joint4_fixed" type="fixed">
+        <parent link="link3"/>
+        <child link="tool_link"/>
+        <origin xyz="0.3 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="tool_link">
+        <visual>
+            <origin xyz="0.05 0 0" rpy="0 0 0"/>
+            <geometry>
+                <box size="0.1 0.2 0.05"/>
+            </geometry>
+            <material name="orange"/>
+        </visual>
+    </link>
+
+</robot>
