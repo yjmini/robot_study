@@ -29,6 +29,7 @@ setup(
             'step4_chatbot = pjt_llm.step4_chatbot:main',
             'ros2_controller = pjt_llm.ros2_controller:main',
             'step5_controller_agent = pjt_llm.step5_controller_agent:main',
+            'step6_orchestrator = pjt_llm.step6_orchestrator:main',
         ],
     },
 )

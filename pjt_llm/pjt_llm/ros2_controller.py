@@ -24,13 +24,20 @@ COLOR_TABLE = {
     "gray": (128, 128, 128),
     "grey": (128, 128, 128),
     "흰색": (255, 255, 255),
+    "흰": (255, 255, 255),
     "하얀색": (255, 255, 255),
+    "하얀": (255, 255, 255),
     "하양": (255, 255, 255),
     "백색": (255, 255, 255),
     "검은색": (0, 0, 0),
+    "검은": (0, 0, 0),
     "검정": (0, 0, 0),
     "검정색": (0, 0, 0),
+    "까만색": (0, 0, 0),
+    "까만": (0, 0, 0),
+    "까맣게": (0, 0, 0),
     "노란색": (255, 255, 0),
+    "노란": (255, 255, 0),
     "노랑": (255, 255, 0),
     "빨간색": (255, 0, 0),
     "빨강": (255, 0, 0),
@@ -38,6 +45,7 @@ COLOR_TABLE = {
     "초록": (0, 255, 0),
     "녹색": (0, 255, 0),
     "파란색": (0, 0, 255),
+    "파란": (0, 0, 255),
     "파랑": (0, 0, 255),
     "보라색": (160, 80, 255),
     "보라": (160, 80, 255),
@@ -56,10 +64,34 @@ def clamp(value: float, low: float, high: float) -> float:
 
 def resolve_color(color: str) -> tuple[int, int, int]:
     """Resolve English or Korean color names to RGB."""
-    key = color.strip().lower()
-    if key not in COLOR_TABLE:
-        raise ValueError(f"unknown color name: {color}")
-    return COLOR_TABLE[key]
+    key = color.strip().lower().replace(" ", "")
+    compact_colors = {
+        name.replace(" ", ""): rgb
+        for name, rgb in COLOR_TABLE.items()
+    }
+    if key in compact_colors:
+        return compact_colors[key]
+    for name in sorted(compact_colors, key=len, reverse=True):
+        if name in key:
+            return compact_colors[name]
+    raise ValueError(f"unknown color name: {color}")
+
+
+def quadratic_point(
+    start: tuple[float, float],
+    control: tuple[float, float],
+    end: tuple[float, float],
+    t: float,
+) -> tuple[float, float]:
+    """Return one point on a quadratic Bezier curve."""
+    one_minus = 1.0 - t
+    x = one_minus * one_minus * start[0]
+    x += 2.0 * one_minus * t * control[0]
+    x += t * t * end[0]
+    y = one_minus * one_minus * start[1]
+    y += 2.0 * one_minus * t * control[1]
+    y += t * t * end[1]
+    return x, y
 
 
 class TurtleController:
@@ -84,6 +116,8 @@ class TurtleController:
             ),
             self.node.create_client(SetParameters, "/sim/set_parameters"),
         ]
+        self.current_pen = (255, 255, 255, 2, False)
+        self.draw_delay = 0.08
         time.sleep(0.2)
 
     def close(self) -> None:
@@ -173,6 +207,14 @@ class TurtleController:
         request.width = int(clamp(width, 1, 12))
         request.off = bool(off)
         result = self._call(self.pen_client, request)
+        time.sleep(0.03)
+        self.current_pen = (
+            request.r,
+            request.g,
+            request.b,
+            request.width,
+            request.off,
+        )
         result.update(
             {
                 "r": request.r,
@@ -262,6 +304,7 @@ class TurtleController:
         r, g, b = resolve_color(color)
         result = self.set_background(r, g, b)
         result["color"] = color
+        time.sleep(0.15)
         return result
 
     def draw_polyline(
@@ -274,9 +317,11 @@ class TurtleController:
         if not points:
             return {"ok": False, "error": "points must not be empty"}
 
-        self.set_pen(off=True)
+        r, g, b, width, _ = self.current_pen
+        self.set_pen(r, g, b, width, True)
         self.teleport_turtle(points[0][0], points[0][1], theta)
-        self.set_pen(off=False)
+        time.sleep(self.draw_delay)
+        self.set_pen(r, g, b, width, False)
 
         draw_points = list(points)
         if close_shape and points[0] != points[-1]:
@@ -285,6 +330,7 @@ class TurtleController:
         for x, y in draw_points[1:]:
             self.teleport_turtle(x, y, theta)
             rclpy.spin_once(self.node, timeout_sec=0.02)
+            time.sleep(self.draw_delay)
 
         return {
             "ok": True,
@@ -298,8 +344,12 @@ class TurtleController:
         center_x: float = 5.5,
         center_y: float = 5.5,
         size: float = 3.0,
+        color: str = "",
+        pen_width: int = 3,
     ) -> dict[str, Any]:
         """Draw a precise square using absolute turtle positions."""
+        if color:
+            self.set_pen_color(color, pen_width, False)
         half = clamp(size, 0.5, 8.0) / 2.0
         center_x = clamp(center_x, 1.0 + half, 10.0 - half)
         center_y = clamp(center_y, 1.0 + half, 10.0 - half)
@@ -312,6 +362,8 @@ class TurtleController:
         result = self.draw_polyline(points, close_shape=True)
         result["shape"] = "square"
         result["size"] = half * 2.0
+        if color:
+            result["color"] = color
         return result
 
     def draw_circle(
@@ -320,8 +372,12 @@ class TurtleController:
         center_y: float = 5.5,
         radius: float = 1.7,
         segments: int = 72,
+        color: str = "",
+        pen_width: int = 3,
     ) -> dict[str, Any]:
         """Draw a precise circle with many short absolute segments."""
+        if color:
+            self.set_pen_color(color, pen_width, False)
         radius = clamp(radius, 0.3, 4.5)
         center_x = clamp(center_x, 0.6 + radius, 10.4 - radius)
         center_y = clamp(center_y, 0.6 + radius, 10.4 - radius)
@@ -338,6 +394,8 @@ class TurtleController:
         result["shape"] = "circle"
         result["radius"] = radius
         result["segments"] = segments
+        if color:
+            result["color"] = color
         return result
 
     def draw_star(
@@ -345,8 +403,12 @@ class TurtleController:
         center_x: float = 5.5,
         center_y: float = 5.5,
         radius: float = 0.6,
+        color: str = "",
+        pen_width: int = 2,
     ) -> dict[str, Any]:
         """Draw one five-point star."""
+        if color:
+            self.set_pen_color(color, pen_width, False)
         radius = clamp(radius, 0.15, 2.0)
         center_x = clamp(center_x, 0.6 + radius, 10.4 - radius)
         center_y = clamp(center_y, 0.6 + radius, 10.4 - radius)
@@ -362,39 +424,94 @@ class TurtleController:
         result = self.draw_polyline(points, close_shape=True)
         result["shape"] = "star"
         result["radius"] = radius
+        if color:
+            result["color"] = color
         return result
+
+    def draw_star_field(
+        self,
+        count: int = 7,
+        color: str = "노란색",
+        background_color: str = "",
+        pen_width: int = 2,
+    ) -> dict[str, Any]:
+        """Draw multiple separated stars without drawing connecting lines."""
+        if background_color:
+            self.set_background_color(background_color)
+
+        count = int(clamp(count, 1, 12))
+        positions = [
+            (2.0, 8.8, 0.28),
+            (4.0, 7.4, 0.22),
+            (6.4, 9.0, 0.30),
+            (8.6, 7.8, 0.24),
+            (2.8, 5.8, 0.20),
+            (5.5, 6.2, 0.26),
+            (8.0, 5.4, 0.22),
+            (1.7, 3.6, 0.18),
+            (4.7, 3.4, 0.20),
+            (7.3, 3.2, 0.18),
+            (9.2, 4.5, 0.20),
+            (3.5, 9.6, 0.16),
+        ]
+        drawn = []
+        for x, y, radius in positions[:count]:
+            result = self.draw_star(
+                center_x=x,
+                center_y=y,
+                radius=radius,
+                color=color,
+                pen_width=pen_width,
+            )
+            drawn.append({
+                "x": result["points"][0]["x"] if "points" in result else x,
+                "center_x": x,
+                "center_y": y,
+                "radius": radius,
+            })
+
+        return {
+            "ok": True,
+            "shape": "star_field",
+            "count": count,
+            "color": color,
+            "background_color": background_color,
+            "stars": drawn,
+        }
 
     def draw_crescent(
         self,
         center_x: float = 5.5,
         center_y: float = 5.5,
         radius: float = 1.0,
+        color: str = "",
+        pen_width: int = 3,
     ) -> dict[str, Any]:
-        """Draw a crescent moon as one continuous curved outline."""
+        """Draw a clean crescent moon as one closed curved outline."""
+        if color:
+            self.set_pen_color(color, pen_width, False)
         radius = clamp(radius, 0.3, 3.0)
         center_x = clamp(center_x, 0.6 + radius, 10.4 - radius)
         center_y = clamp(center_y, 0.6 + radius, 10.4 - radius)
-        points = []
+        top = (center_x, center_y + radius)
+        bottom = (center_x, center_y - radius)
+        outer_control = (center_x + radius * 1.05, center_y)
+        inner_control = (center_x + radius * 0.25, center_y)
 
-        for index in range(25):
-            angle = -math.pi / 2.0 + math.pi * index / 24.0
-            points.append((
-                center_x + radius * math.cos(angle),
-                center_y + radius * math.sin(angle),
-            ))
-
-        inner_radius = radius * 0.78
-        inner_center_x = center_x + radius * 0.35
-        for index in range(25):
-            angle = math.pi / 2.0 - math.pi * index / 24.0
-            points.append((
-                inner_center_x + inner_radius * math.cos(angle),
-                center_y + inner_radius * math.sin(angle),
-            ))
+        points = [
+            quadratic_point(top, outer_control, bottom, index / 28.0)
+            for index in range(29)
+        ]
+        points.extend(
+            quadratic_point(bottom, inner_control, top, index / 28.0)
+            for index in range(1, 29)
+        )
 
         result = self.draw_polyline(points, close_shape=True)
         result["shape"] = "crescent"
         result["radius"] = radius
+        if color:
+            result["color"] = color
         return result
 
 
